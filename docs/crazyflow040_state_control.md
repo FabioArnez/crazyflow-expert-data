@@ -164,7 +164,8 @@ with that lag reported", or it needs a stiffer controller than the firmware-gain
   with a mean rotor command of 22.2 k RPM (tier-1, last iteration of its `metrics.jsonl`), so the
   velocity expert will be about 3× slower; the episode budget is 2 s + 3 s per gate.
 - **Hidden controller state.** The carried reference is state the policy cannot infer from the
-  drone alone, so the observation adds `p_ref − p`, `v_ref` and `ψ_ref − ψ` (44-D instead of 37-D).
+  drone alone, so the observation adds `p_ref − p`, `v_ref` and `ψ_ref − ψ` (37-D → 44-D; the
+  per-episode target speed added later makes it 45-D).
 - **For the RPM expert on 0.4.0** (the other session): the new rotor clip at 23.2 k RPM is below
   its action range (`[0.65, 1.35]·hover`, up to 25.6 k RPM at the 0.3.2 hover) and below the top of
   its flown range; the hover RPM moved from 18,968 to 19,217 with the mass change; and

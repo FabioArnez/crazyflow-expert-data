@@ -22,8 +22,8 @@ no import across the two repositories; each ported module says what changed in i
 | Velocity-command layer on `Control.state` (`velocity.py`) | done, tested |
 | Batched gate environment with velocity actions (`env.py`) | done, tested |
 | PPO, networks, checkpointing, Hydra training (`ppo.py`, `train.py`) | ported, tested |
-| Tanh-squashed policy (default) | done, tested; removes lateral/vertical/yaw saturation |
-| Single-gate smoke runs (clip, tanh) | learn: 512/512 deterministic successes after 10 M steps, ~1.2 min |
+| Tanh-squashed policy and per-episode target speed (defaults) | done, tested; no saturated commands |
+| Single-gate smoke runs (clip, tanh, tanh + target speed) | learn: ≥ 510/512 deterministic successes after 10 M steps, ~1.2 min |
 | Mixed-track expert, 5 seeds, ≥ 95 % | not run yet |
 | Scenarios, world loader, two-pass collection, QC, LeRobot export | planned in `docs/plan.md` |
 
@@ -46,13 +46,12 @@ Zero command holds hover (3.3 cm steady sag from the controller's mass model). T
 criterion "r ≥ 0.95 at a lag of at most one decision" is **not** met in xy: the Mellinger cascade
 lags by ≈ 133 ms on this airframe; `tests/test_velocity.py` keeps it as a strict `xfail`.
 
-**Smoke runs** (`experiment=single_gate`, `results/smoke_single_gate.md`), tanh-squashed policy:
-training-rollout success ≥ 95 % after 2.08 M env steps (30 s); deterministic 512/512 after 10 M
-steps; ≈ 170–190 k decisions/s at 512 worlds on the RTX 2080. Compared with the clipped Gaussian,
-the deterministic saturation (`|a| >= 0.99`) fell from 98.8 / 56.0 / 2.5 / 1.3 % to
-36.0 / 0 / 0 / 0 % (vx, vy, vz, ω_z). The forward command still crowds its bound (median 0.98 of
-1.5 m/s): the progress reward pays for speed. This is open for the label distribution
-(`docs/plan.md`).
+**Smoke runs** (`experiment=single_gate`, `results/smoke_single_gate.md`), default configuration
+(tanh-squashed policy, per-episode target speed): deterministic 510/512 successes after 10 M env
+steps (1.2 min, ≈ 165–190 k decisions/s at 512 worlds on the RTX 2080); no command component reaches
+`|a| >= 0.99` (the clipped Gaussian had 98.8 % on `v^h_x`); the realised mean speed follows the
+episode's target speed with r = 0.985 and a mean error of 0.066 m/s. At the fastest target
+(1.2 m/s) success is 97.9 %.
 
 ## Install and run
 
@@ -87,17 +86,25 @@ kept as `anchor="measured"` for comparison.
 **Environment** (`env.py`). Functional and batched (`EnvState` pytree around crazyflow's `SimData`,
 same-step autoreset, `lax.scan` rollouts). Tracks: chains, imperfect circles and the `mixed` family
 (default). Gate passage is the geometric plane-crossing test (spec eq. 13), not an MJX contact query.
-Observation: the RPM expert's 37-D privileged observation (body-frame state, previous action, current
-and next gate, gates remaining capped at `obs_remaining_cap`) plus the 7-D command reference
-(`p_ref − p`, `v_ref`, `ψ_ref − ψ`). Action bounds: `±1.5 / ±1.0 / ±0.75` m/s and `±1.5` rad/s.
-Reward as in the RPM expert (progress, gate bonus, crash and miss penalties, rate, action-rate and
-heading terms).
+Observation (45-D): the RPM expert's 37-D privileged observation (body-frame state, previous action,
+current and next gate, gates remaining capped at `obs_remaining_cap`), the 7-D command reference
+(`p_ref − p`, `v_ref`, `ψ_ref − ψ`) and the episode's target speed. Action bounds:
+`±1.5 / ±1.0 / ±0.75` m/s and `±1.5` rad/s. Reward as in the RPM expert (progress, gate bonus, crash
+and miss penalties, rate, action-rate and heading terms) plus `−k_speed (|v| − v_target)²`.
+Domain randomisation per world: mass ±10 %, inertia ±10 %, thrust curve ±5 %.
+
+**Target speed.** Each episode draws `v_target ~ U[0.4, 1.2]` m/s (`env.target_speed_min/max`;
+`EnvParams.from_config(target_speed=…)` fixes it for evaluation). Without it the progress reward pays
+for speed and the policy pins the forward command at its bound; with it the expert flies at the
+requested speed, which also gives the dataset speed diversity for instructions such as "fly slowly".
+The episode budget is `time_base + n_gates · time_slack · spacing_max / v_target`.
 
 **Policy** (`ppo.py`). 2×256 tanh actor-critic. The action is `tanh(u)` of a Gaussian sample `u`
 (`net.squash=true`, default): commands approach the bounds without sitting on them. The log-density
 includes the tanh change of variables, and the entropy bonus is the reparameterised estimate
 `H(u) + E[Σ log(1 − tanh²u)]`, which penalises a mean deep in saturation. `net.squash=false` gives
-the RPM expert's clipped Gaussian. Rollouts report `rollout/saturation_a{0..3}` (`|a| >= 0.99`). Domain randomisation per world: mass ±10 %, inertia ±10 %, thrust curve ±5 %.
+the RPM expert's clipped Gaussian. Rollouts report `rollout/saturation_a{0..3}` (`|a| >= 0.99`)
+and `rollout/speed_error`.
 
 **Phase-1 lessons kept.** Rotors are pre-spun *exactly* at each world's hover speed at reset; the
 "gates remaining" observation is capped; the default track family is `mixed`.

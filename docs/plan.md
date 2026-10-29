@@ -31,7 +31,7 @@ batched gate environment, PPO, smoke run).
 | 4 | `spatial.py` | §3.4 | Eq. (12) azimuth / elevation in the heading frame at the first frame; the six azimuth × three elevation bins; the three distance bands; the stratified initial-pose sampler with the FOV margin (B1/B3) and the out-of-FOV sampler (B4). | Bin tests; needs the camera decision (`fovy`) first. |
 | 5 | `world.py` | §3.5, §6 action 2 | MuJoCo world-spec loader: gates (square, circle/arch, rectangle) and pads as **mocap bodies** added to `sim.spec`, so that each world has its own poses in `mjx_data.mocap_*` (the MuJoCo model is shared across worlds); materials and textures applied per world at render time (rendering is one world per call). Geometry parameters shared with the crossing test. | A rendered FPV frame shows the gate where eq. (13) expects it. |
 | 6 | `sampler.py` | §3.3, §3.5, §3.10 | Scenario sampler per behaviour, starting with B1, then B6 (hover / hold / stop) and B7 (motion primitives: setpoint programs through the same velocity layer). Held-out factors fixed before collection: two colour–shape pairs, two background sets, the outer 10 % of every pose range; seed ranges 85 / 5 / 10 %. | Coverage matrix of a dry run (no physics) is balanced. |
-| 7 | `collect.py` (pass 1) | §3.6, §3.8 | Batched rollouts with the trained expert: `a* = π(s)` (stochastic sampling, 5–10 seeds), DART `u = a* + ε`, `Σ = diag(0.15², 0.15², 0.10², 0.20²)` on 50 % of episodes; log per decision `pos, quat, vel, ang_vel, rotor_vel`, the command reference, `a*`, `u`, gate events; success by eq. (13) (the env's `gate_crossing` with `r_safe`). Failed episodes go to a separate `failures` store. | 300 B1 episodes in minutes; DART tuned so the perturbed expert stays > 90 %. |
+| 7 | `collect.py` (pass 1) | §3.6, §3.8 | Batched rollouts with the trained expert: `a* = π(s)` (stochastic sampling, 5–10 seeds; the target speed is a scenario factor and is recorded), DART `u = a* + ε`, `Σ = diag(0.15², 0.15², 0.10², 0.20²)` on 50 % of episodes; log per decision `pos, quat, vel, ang_vel, rotor_vel`, the command reference, `a*`, `u`, gate events; success by eq. (13) (the env's `gate_crossing` with `r_safe`). Failed episodes go to a separate `failures` store. | 300 B1 episodes in minutes; DART tuned so the perturbed expert stays > 90 %. |
 | 8 | `render.py` (pass 2) | §3.6, §3.9 | Replay logged poses of successful episodes at 30 Hz with `Sim.render(mode="rgb_array", camera="fpv_cam:0", width=224, height=224, world=w)` under `MUJOCO_GL=egl`, multiprocess. Image `I_t` from the state at the *start* of the label interval `[t, t+Δ)`. Optional segmentation render for the reprojection test. | Throughput measured on the pilot (spec: 500–2,000 frames/s per process is a tier-2 estimate). |
 | 9 | `qc.py` | §3.9 | Success filter; replay fidelity (re-execute `u` open-loop from the recorded initial state: final error < 5 cm); label consistency (eq. 3: r ≥ 0.95 at the controller's measured lag, see `docs/crazyflow040_state_control.md` §5); image–state sync (gate-centre reprojection ≤ 3 px); coverage matrix (≥ 20 per cell); action statistics (percentiles, saturation < 2 %, near-zero `v_z` fraction); language audit. | Every check is a function with a test and a report entry. |
 | 10 | `language.py` + an offline paraphrase script | §3.7 | Canonical instruction from the behaviour template and the verified outcome (bins, discriminators); five offline LLM paraphrases per canonical string, one family-level paraphrase held out; counterfactual pairs for B3. The on-disk `tasks` table stays canonical; paraphrases are sampled at training time (UAVLA side). | No instruction contradicts its scenario metadata. |
@@ -40,15 +40,12 @@ batched gate environment, PPO, smoke run).
 
 ## Decisions needed before step 7
 
-1. **Forward-speed saturation.** The policy is now a tanh-squashed Gaussian (`net.squash`), which
-   removed the labels on the bound and the lateral, vertical and yaw saturation of the clipped
-   Gaussian (deterministic `|a| >= 0.99`: vx 98.8 → 36.0 %, vy 56.0 → 0 %, vz 2.5 → 0 %, ω_z
-   1.3 → 0 %; tier-1, single gate, `results/smoke_single_gate.md`). The forward command still
-   crowds its bound (median 0.98 of 1.5 m/s) because the progress reward pays for speed, so the QC
-   limit (< 2 %) still fails for `v^h_x`. Remaining options: a per-episode target speed (in the
-   observation and the reward), which also gives the speed diversity that the spec's "fly slowly /
-   quickly" instructions need (§3.7); or a speed penalty above a cruise speed. A wider `v^h_x` bound
-   alone would move the same problem to a higher speed. Decide with the 5-seed expert run (step 2).
+1. **Saturation — resolved on the single gate, confirm on mixed tracks.** A tanh-squashed policy
+   plus a per-episode target speed (observed, tracked in the reward) brought the deterministic
+   saturation (`|a| >= 0.99`) from 98.8 / 56.0 / 2.5 / 1.3 % (clipped Gaussian; vx, vy, vz, ω_z) to
+   0 % on every axis, with 510/512 successes and realised speed tracking the target (r = 0.985;
+   tier-1, `results/smoke_single_gate.md`). Check the same numbers on the 5-seed mixed-track
+   expert (step 2), in particular success at the fastest target (97.9 % on the single gate).
 2. **Camera** (spec §5 risk 6): AI-deck vs external camera sets `fovy`, resolution and channels;
    needed by steps 4, 5 and 8. The crazyflow FPV camera is `fovy = 70°`, 640×480.
 3. **QC lag criterion** (`docs/crazyflow040_state_control.md` §5): restate "lag ≤ 1 step".
