@@ -48,13 +48,30 @@ batched gate environment, PPO, smoke run).
    expert (step 2), in particular success at the fastest target (97.9 % on the single gate).
 2. **Camera** (spec §5 risk 6): AI-deck vs external camera sets `fovy`, resolution and channels;
    needed by steps 4, 5 and 8. The crazyflow FPV camera is `fovy = 70°`, 640×480.
-3. **QC lag criterion** (`docs/crazyflow040_state_control.md` §5): restate "lag ≤ 1 step". On the
-   single-gate expert's own rollouts the eq. (3) check is much worse than on the smooth test
-   signals: best-lag r = 0.40 / 0.68 / 0.87 / 0.93 (vx, vy, vz, ω_z; tier-1,
-   `results/eval_single_gate_vtarget.json`), with the best lag at the search limit (10 decisions)
-   for vx. Hypothesis, not yet checked: the expert issues near-step commands at take-off and in
-   turns, so the 2 m/s² rate limit of the reference dominates the realised velocity. Check on the
-   mixed-track expert; if it holds, add the realised reference velocity `v_ref` to the logged data
-   and decide whether the label check compares against it, or penalise command steps more.
-4. **Raw format.** Per-episode NumPy archives plus frame folders (or one MP4 per episode) are enough
+3. **QC lag criterion** (`docs/crazyflow040_state_control.md` §5): restate "lag ≤ 1 step".
+4. **Command chatter — fix before the 5-seed run.** On the single-gate target-speed expert's own
+   rollouts, the eq. (3) check fails (best-lag r = 0.58 / 0.69 / 0.87 for vx, vy, vz). Splitting
+   it with `scripts/analyse_label_consistency.py` (tier-1, 512 episodes,
+   `results/label_consistency_single_gate_vtarget.json`):
+   - The controller is not the problem: rate-limited reference → realised velocity has
+     r = 0.976 / 0.973 / 0.954 at a lag of 1–2 decisions, and where the rate limit is inactive,
+     command → realised has r = 0.971 / 0.965 / 0.971.
+   - The rate limit is active in 96 / 95 / 78 % of decisions, also after the first second, so the
+     cause is not only the take-off step (the first hypothesis).
+   - The cause is **period-2 chatter** of the deterministic policy in cruise: the vx command
+     alternates by 0.40 m/s per decision on average (e.g. 1.1 ↔ 0.55 m/s while the drone flies a
+     steady 0.79 m/s), consecutive steps flip sign in 82 % of decisions, and 62 % of the
+     within-episode vx command power lies above 5 Hz (vy: 0.11 m/s, 70 %, 28 %; vz: 0.08 m/s,
+     58 %, 8 %). The rate-limited reference averages the dither, so the drone flies smoothly, but
+     the label is a 15 Hz oscillation that a VLA cannot learn from images and that has no meaning
+     on the real vehicle. Not measured for the clipped and tanh-only experts (their 44-D
+     observation predates the script); their forward command sat at or near the bound.
+   - Likely mechanism (not tested): a limit cycle through the `prev_action` and `v_ref`
+     observations; the action-rate penalty (`k_action_rate = 0.01` on normalised actions, about
+     1.4e-3 per decision for this step) is of the same size as the speed term and too weak.
+   - Proposed fix: a penalty on the gap between the command and the reference it produced,
+     `−k (|R_ψ a_v − v_ref,end|²)` ("command only what the layer can realise"), plus a larger
+     `k_action_rate`. Accept the expert when the step sign-flip rate is < 0.3, the power above
+     5 Hz is < 5 % and eq. (3) gives r ≥ 0.95 at the controller's lag.
+5. **Raw format.** Per-episode NumPy archives plus frame folders (or one MP4 per episode) are enough
    for the pilot; revisit when the MVP set (3,000–5,000 episodes) is collected.
