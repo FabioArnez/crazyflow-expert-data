@@ -25,7 +25,8 @@ no import across the two repositories; each ported module says what changed in i
 | Tanh-squashed policy and per-episode target speed (defaults) | done, tested; no saturated commands |
 | Single-gate smoke runs (clip, tanh, tanh + target speed) | learn: ≥ 510/512 deterministic successes after 10 M steps, ~1.2 min |
 | Evaluation (`expert-eval`): success + Wilson CI, saturation, speed tracking, eq. (3) | done, tested |
-| Mixed-track expert, 5 seeds, ≥ 95 % | not run yet |
+| Command-gap penalty (removes 15 Hz command chatter) | done, tested |
+| Mixed-track expert, 5 seeds | done: 99.5–100 % on 5-gate chains and circles (`results/mixed_tracks/`) |
 | Scenarios, world loader, two-pass collection, QC, LeRobot export | planned in `docs/plan.md` |
 
 All numbers in this README are tier-1 (measured on the development laptop, RTX 2080 / CPU).
@@ -47,12 +48,18 @@ Zero command holds hover (3.3 cm steady sag from the controller's mass model). T
 criterion "r ≥ 0.95 at a lag of at most one decision" is **not** met in xy: the Mellinger cascade
 lags by ≈ 133 ms on this airframe; `tests/test_velocity.py` keeps it as a strict `xfail`.
 
-**Smoke runs** (`experiment=single_gate`, `results/smoke_single_gate.md`), default configuration
-(tanh-squashed policy, per-episode target speed): deterministic 510/512 successes after 10 M env
-steps (1.2 min, ≈ 165–190 k decisions/s at 512 worlds on the RTX 2080); no command component reaches
-`|a| >= 0.99` (the clipped Gaussian had 98.8 % on `v^h_x`); the realised mean speed follows the
-episode's target speed with r = 0.985 and a mean error of 0.066 m/s. At the fastest target
-(1.2 m/s) success is 97.9 %.
+**Mixed-track expert** (`experiment=mixed_tracks`, 5 seeds, `results/mixed_tracks/README.md`):
+trained from scratch in 3.0–3.3 min per seed (50 M steps, ≈ 320 k decisions/s at 1,024 worlds).
+Deterministic success on 1,024 episodes per condition: 99.7–100 % on 5-gate chains and 99.5–100 % on
+5-gate circles (30–72° per gate), at target speeds of 0.4–1.2 m/s. Label quality: no saturated
+commands; consecutive command steps flip sign in ≤ 10.7 % of decisions and ≤ 4.9 % of the command
+power is above 5 Hz; commanded vs realised velocity (spec eq. 3) r = 0.975–0.989 in xy and
+0.949–0.956 in z at lags of 1–3 decisions (the z loop itself reaches 0.952–0.958).
+
+**Single-gate smoke runs** (`results/smoke_single_gate.md`) traced the label problems that the
+defaults now fix: the clipped Gaussian put 98.8 % of forward commands on the bound; the tanh policy
+still crowded it; the target speed removed saturation but the expert then dithered its command at
+15 Hz; the command-gap penalty removed the dither.
 
 ## Install and run
 
@@ -61,7 +68,9 @@ uv sync                                    # Python 3.12, crazyflow[gpu]==0.4.0 
 uv run pytest                              # CPU, ~90 s; tests/conftest.py forces JAX_PLATFORMS=cpu
 uv run ruff check src tests scripts && uv run ruff format --check src tests scripts
 uv run expert-train experiment=single_gate # smoke run, ~1.3 min on an RTX 2080
-uv run expert-train experiment=mixed_tracks -m run.seed=0,1,2,3,4   # planned expert stage
+uv run expert-train -m experiment=mixed_tracks run.seed=0,1,2,3,4   # the expert, ~3 min per seed
+scripts/eval_seeds.sh results/mixed_tracks/eval <run_dir> [<run_dir> ...]  # chains, circles, labels
+uv run python scripts/summarise_seeds.py results/mixed_tracks/eval
 uv run expert-eval --ckpt outputs/<run>/<timestamp>/checkpoint.pkl --track-type circle \
     --n-episodes 1024 --json results/eval_<name>.json   # --target-speed, --stochastic, --save-traj
 uv run python scripts/measure_tracking.py --grid 480 120 30 --out results/tracking.json

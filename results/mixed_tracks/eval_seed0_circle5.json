@@ -1,0 +1,91 @@
+{
+  "checkpoint": "outputs/mixed_tracks/2026-10-29_09-38-52/checkpoint.pkl",
+  "checkpoint_sha256_16": "ae18c891c975476f",
+  "policy": "tanh",
+  "n_gates": 5,
+  "n_gates_min": 5,
+  "n_episodes": 1024,
+  "max_steps": 1298,
+  "yaw_range": 0.6000000238418579,
+  "track_type": "circle",
+  "circle_prob": 0.5,
+  "gate_yaw_noise": 0.3,
+  "gates_per_turn": [
+    5.0,
+    12.0
+  ],
+  "target_speed": [
+    0.4000000059604645,
+    1.2000000476837158
+  ],
+  "deterministic": true,
+  "domain_randomization": true,
+  "success_rate": 0.9951171875,
+  "success_wilson95": [
+    0.9886206977231168,
+    0.9979126358177713
+  ],
+  "crash_rate": 0.0048828125,
+  "miss_rate": 0.0,
+  "timeout_rate": 0.0,
+  "gates_passed_mean": 4.9755859375,
+  "episode_length_s": 10.369791984558105,
+  "return_mean": 28.44892692565918,
+  "per_n_active": {
+    "5": 0.9951171875
+  },
+  "per_target_speed": {
+    "0.40-0.67": {
+      "n": 344,
+      "success_rate": 1.0,
+      "speed_minus_target": 0.10926588114747622
+    },
+    "0.67-0.93": {
+      "n": 359,
+      "success_rate": 0.9972144961357117,
+      "speed_minus_target": 0.09195308356786856
+    },
+    "0.93-1.20": {
+      "n": 321,
+      "success_rate": 0.9875389337539673,
+      "speed_minus_target": 0.051614638200543475
+    }
+  },
+  "saturation_ge_0.99": {
+    "vx": 0.0,
+    "vy": 0.0,
+    "vz": 0.0,
+    "wz": 0.0
+  },
+  "saturation_ge_0.95": {
+    "vx": 0.0,
+    "vy": 0.002015318935208438,
+    "vz": 0.0,
+    "wz": 0.01653691612255148
+  },
+  "speed_tracking": {
+    "corr_episode_speed_target": 0.9952475215414368,
+    "mean_speed_minus_target": 0.08512394431442488,
+    "mean_abs_speed_minus_target": 0.08630036299850888
+  },
+  "label_consistency_eq3": {
+    "r_lag0": {
+      "vx": 0.9728000164031982,
+      "vy": 0.9821000099182129,
+      "vz": 0.9420999884605408,
+      "wz": 0.9851999878883362
+    },
+    "best_lag_steps": {
+      "vx": 3,
+      "vy": 1,
+      "vz": 2,
+      "wz": 1
+    },
+    "r_best_lag": {
+      "vx": 0.9847999811172485,
+      "vy": 0.9843000173568726,
+      "vz": 0.9556999802589417,
+      "wz": 0.9886000156402588
+    }
+  }
+}
