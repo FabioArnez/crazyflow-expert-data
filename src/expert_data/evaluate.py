@@ -291,5 +291,14 @@ def main(argv=None):
     return summary
 
 
-if __name__ == "__main__":
+def cli() -> None:
+    """Console entry point ``expert-eval``.
+
+    ``main`` returns the summary for programmatic use; a console script passes the return value
+    to ``sys.exit``, which would turn the dict into exit code 1.
+    """
     main()
+
+
+if __name__ == "__main__":
+    cli()

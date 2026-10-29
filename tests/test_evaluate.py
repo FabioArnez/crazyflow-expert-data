@@ -75,3 +75,15 @@ def test_evaluate_runs_on_an_untrained_checkpoint(tmp_path, monkeypatch):
     assert "/" not in out.read_text().split('"checkpoint": ')[1].split(",")[0].strip('"')
     traj = np.load(tmp_path / "traj.npz")
     assert traj["pos"].shape[1] == 2 and traj["cmd"].shape[-1] == 4
+
+
+def test_console_script_does_not_return_the_summary():
+    # A console script passes main()'s return value to sys.exit: a dict would mean exit code 1.
+    import tomllib
+    from pathlib import Path
+
+    from expert_data import evaluate
+
+    pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
+    assert pyproject["project"]["scripts"]["expert-eval"] == "expert_data.evaluate:cli"
+    assert evaluate.cli.__annotations__.get("return") in (None, "None")

@@ -9,8 +9,9 @@ build/
 .ruff_cache/
 
 # Hydra / experiment outputs: run records, checkpoints and videos under outputs/ are tracked;
-# trajectories (*.npz, regenerable with `gate-ppo-eval --save-traj`) and logs are not
-multirun/
+# trajectories (*.npz, regenerable with `expert-eval --save-traj`) and logs are not
+# Hydra's default sweep dir; this repo sweeps into outputs/multirun/, which is tracked
+/multirun/
 wandb/
 *.log
 
