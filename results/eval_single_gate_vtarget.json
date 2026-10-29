@@ -1,0 +1,91 @@
+{
+  "checkpoint": "outputs/single_gate_vtarget/2026-10-29_02-24-41/checkpoint.pkl",
+  "checkpoint_sha256_16": "3bb071e32ffc4547",
+  "policy": "tanh",
+  "n_gates": 1,
+  "n_gates_min": 1,
+  "n_episodes": 512,
+  "max_steps": 308,
+  "yaw_range": 0.30000001192092896,
+  "track_type": "chain",
+  "circle_prob": 0.5,
+  "gate_yaw_noise": 0.0,
+  "gates_per_turn": [
+    8.0,
+    12.0
+  ],
+  "target_speed": [
+    0.4000000059604645,
+    1.2000000476837158
+  ],
+  "deterministic": true,
+  "domain_randomization": true,
+  "success_rate": 1.0,
+  "success_wilson95": [
+    0.9925527526279385,
+    1.0
+  ],
+  "crash_rate": 0.0,
+  "miss_rate": 0.0,
+  "timeout_rate": 0.0,
+  "gates_passed_mean": 1.0,
+  "episode_length_s": 2.3895833492279053,
+  "return_mean": 5.0025177001953125,
+  "per_n_active": {
+    "1": 1.0
+  },
+  "per_target_speed": {
+    "0.40-0.67": {
+      "n": 178,
+      "success_rate": 1.0,
+      "speed_minus_target": 0.07749967372341247
+    },
+    "0.67-0.93": {
+      "n": 163,
+      "success_rate": 1.0,
+      "speed_minus_target": -0.008428848514410987
+    },
+    "0.93-1.20": {
+      "n": 171,
+      "success_rate": 1.0,
+      "speed_minus_target": -0.09376055614959716
+    }
+  },
+  "saturation_ge_0.99": {
+    "vx": 0.0,
+    "vy": 0.0,
+    "vz": 0.00040867480383609413,
+    "wz": 0.0
+  },
+  "saturation_ge_0.95": {
+    "vx": 0.03073234524847428,
+    "vy": 0.0,
+    "vz": 0.03590889276373147,
+    "wz": 0.0011715344376634698
+  },
+  "speed_tracking": {
+    "corr_episode_speed_target": 0.9840629688665191,
+    "mean_speed_minus_target": -0.0070547177473880614,
+    "mean_abs_speed_minus_target": 0.06667232604410836
+  },
+  "label_consistency_eq3": {
+    "r_lag0": {
+      "vx": -0.0828000009059906,
+      "vy": 0.5306000113487244,
+      "vz": 0.32829999923706055,
+      "wz": 0.8521000146865845
+    },
+    "best_lag_steps": {
+      "vx": 10,
+      "vy": 7,
+      "vz": 9,
+      "wz": 2
+    },
+    "r_best_lag": {
+      "vx": 0.4041000008583069,
+      "vy": 0.680899977684021,
+      "vz": 0.8680999875068665,
+      "wz": 0.932200014591217
+    }
+  }
+}

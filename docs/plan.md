@@ -25,7 +25,7 @@ batched gate environment, PPO, smoke run).
 
 | # | Module (planned) | Spec | Content | Done when |
 |---|---|---|---|---|
-| 1 | `evaluate.py` | §1.4, §3.9, §3.10 | Port `gate-ppo-eval`: deterministic and stochastic rollouts of a checkpoint on chain / circle families, success with Wilson 95 % intervals, `--save-traj`; label consistency (eq. 3) on the expert's own rollouts. | The mixed-track expert is evaluated on ≥ 1,000 episodes per family. |
+| 1 | `evaluate.py` — **done** | §1.4, §3.9, §3.10 | `expert-eval`: deterministic and stochastic rollouts of a checkpoint on chain / circle families, success with Wilson 95 % intervals, per gate count and per target-speed bin, saturation per axis, speed tracking, label consistency (eq. 3) on the expert's own rollouts, `--save-traj`. | The mixed-track expert is evaluated on ≥ 1,000 episodes per family. |
 | 2 | expert training (configs only) | §1.4, §6 action 1 | `experiment=mixed_tracks`, 5 seeds; decide the action-saturation fix first (below). | ≥ 95 % deterministic success with DR on, per seed; saturation < 2 %. |
 | 3 | `scenario.py` | §3.7, §3.1 | Versioned scenario schema (dataclass ↔ JSON): `scenario_id`, behaviour (B1…B8), seed, scene (gates: pose, shape, aperture, frame, colour, texture; distractors; pads; background set; lighting rig; camera `fovy` / pitch), initial state, `T_max`, dynamics DR draw, split tag, held-out flags, provenance (versions, checkpoint hash, command config). Language fields are filled after the success check. | Round-trip tests; schema version in every file. |
 | 4 | `spatial.py` | §3.4 | Eq. (12) azimuth / elevation in the heading frame at the first frame; the six azimuth × three elevation bins; the three distance bands; the stratified initial-pose sampler with the FOV margin (B1/B3) and the out-of-FOV sampler (B4). | Bin tests; needs the camera decision (`fovy`) first. |
@@ -48,6 +48,13 @@ batched gate environment, PPO, smoke run).
    expert (step 2), in particular success at the fastest target (97.9 % on the single gate).
 2. **Camera** (spec §5 risk 6): AI-deck vs external camera sets `fovy`, resolution and channels;
    needed by steps 4, 5 and 8. The crazyflow FPV camera is `fovy = 70°`, 640×480.
-3. **QC lag criterion** (`docs/crazyflow040_state_control.md` §5): restate "lag ≤ 1 step".
+3. **QC lag criterion** (`docs/crazyflow040_state_control.md` §5): restate "lag ≤ 1 step". On the
+   single-gate expert's own rollouts the eq. (3) check is much worse than on the smooth test
+   signals: best-lag r = 0.40 / 0.68 / 0.87 / 0.93 (vx, vy, vz, ω_z; tier-1,
+   `results/eval_single_gate_vtarget.json`), with the best lag at the search limit (10 decisions)
+   for vx. Hypothesis, not yet checked: the expert issues near-step commands at take-off and in
+   turns, so the 2 m/s² rate limit of the reference dominates the realised velocity. Check on the
+   mixed-track expert; if it holds, add the realised reference velocity `v_ref` to the logged data
+   and decide whether the label check compares against it, or penalise command steps more.
 4. **Raw format.** Per-episode NumPy archives plus frame folders (or one MP4 per episode) are enough
    for the pilot; revisit when the MVP set (3,000–5,000 episodes) is collected.

@@ -24,6 +24,7 @@ no import across the two repositories; each ported module says what changed in i
 | PPO, networks, checkpointing, Hydra training (`ppo.py`, `train.py`) | ported, tested |
 | Tanh-squashed policy and per-episode target speed (defaults) | done, tested; no saturated commands |
 | Single-gate smoke runs (clip, tanh, tanh + target speed) | learn: ≥ 510/512 deterministic successes after 10 M steps, ~1.2 min |
+| Evaluation (`expert-eval`): success + Wilson CI, saturation, speed tracking, eq. (3) | done, tested |
 | Mixed-track expert, 5 seeds, ≥ 95 % | not run yet |
 | Scenarios, world loader, two-pass collection, QC, LeRobot export | planned in `docs/plan.md` |
 
@@ -61,6 +62,8 @@ uv run pytest                              # CPU, ~90 s; tests/conftest.py force
 uv run ruff check src tests scripts && uv run ruff format --check src tests scripts
 uv run expert-train experiment=single_gate # smoke run, ~1.3 min on an RTX 2080
 uv run expert-train experiment=mixed_tracks -m run.seed=0,1,2,3,4   # planned expert stage
+uv run expert-eval --ckpt outputs/<run>/<timestamp>/checkpoint.pkl --track-type circle \
+    --n-episodes 1024 --json results/eval_<name>.json   # --target-speed, --stochastic, --save-traj
 uv run python scripts/measure_tracking.py --grid 480 120 30 --out results/tracking.json
 ```
 
@@ -123,6 +126,7 @@ src/expert_data/
   checkpoint.py pickle checkpoints + content hash                     (ported)
   config.py     dataclass schema for Hydra
   train.py      expert-train entry point                              (ported)
+  evaluate.py   expert-eval: outcomes, saturation, speed, eq. (3)     (ported + new)
 configs/        config.yaml, experiment/{single_gate,mixed_tracks}.yaml
 docs/           crazyflow040_state_control.md (interface findings), plan.md (next modules)
 results/        tracking measurements, smoke-run summary
