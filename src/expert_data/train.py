@@ -52,6 +52,7 @@ CONSOLE_KEYS = (
     ("episode/timeout", "tout", "{:.2f}"),
     ("rollout/speed", "v", "{:.2f}"),
     ("rollout/speed_error", "dv", "{:.2f}"),
+    ("rollout/cmd_gap", "gap", "{:.3f}"),
     ("rollout/action_saturation", "sat", "{:.3f}"),
     ("loss/entropy", "ent", "{:.2f}"),
     ("loss/approx_kl", "kl", "{:.4f}"),

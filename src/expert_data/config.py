@@ -81,10 +81,14 @@ class EnvConfig:
     crash_penalty: float = 10.0  # floor / ceiling / frame hit / out of bounds / tilt
     miss_penalty: float = 10.0  # crossed the gate plane outside the frame
     k_ang_vel: float = 2e-3  # * |omega|^2
-    k_action_rate: float = 1e-2  # * |a_t - a_{t-1}|^2 (normalised actions)
+    k_action_rate: float = 0.1  # * |a_t - a_{t-1}|^2 (normalised actions; RPM expert: 0.01)
     k_yaw: float = 1e-2  # * (1 - cos(heading error to current gate)); keeps the camera on the gate
     # * (|v| - v_target)^2; with k_progress = 1 the optimum is v_target + 1/(2 k f) ~ +0.03 m/s.
     k_speed: float = 0.5
+    # * |R_psi v^h - v_ref|^2 (m/s) at the end of the decision: commanding more than the
+    # rate-limited reference can reach in one decision costs reward. Without it the expert
+    # dithered its command at 15 Hz around the reference (docs/plan.md, "Command chatter").
+    k_cmd_gap: float = 1.0
     # --- domain randomisation (+- fraction, uniform, per world, resampled at every reset) ------
     dr_mass: float = 0.1
     dr_inertia: float = 0.1

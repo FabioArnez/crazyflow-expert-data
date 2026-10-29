@@ -114,3 +114,21 @@ def test_reward_penalises_speed_away_from_target():
         rewards[v_target] = np.asarray(reward)
     # Same worlds hovering (|v| ~ 0): the 1 m/s target costs k_speed * 1^2 more per decision.
     np.testing.assert_allclose(rewards[0.0] - rewards[1.0], env.cfg.k_speed, atol=0.02)
+
+
+def test_reward_penalises_commands_beyond_the_reference():
+    kw = dict(start_vel_max=0.0, start_ang_vel_max=0.0, start_tilt_max=0.0)
+    env, params, state, obs = make_env(target_speed=0.0, **kw)
+    rewards, gaps = {}, {}
+    for a_x in (0.0, 1.0):  # hold vs. a 1.5 m/s forward step from hover
+        action = jnp.zeros((4, ACTION_DIM)).at[:, 0].set(a_x)
+        _, _, reward, *_, info = env.step(state, action, params)
+        rewards[a_x], gaps[a_x] = np.asarray(reward), np.asarray(info["cmd_gap"])
+    # The reference moves by acc_max_xy / decision_freq per decision; the rest is the gap.
+    expected_gap = env.cfg.v_max_x - env.cfg.cmd_acc_max_xy / env.cfg.decision_freq
+    np.testing.assert_allclose(gaps[1.0], expected_gap, atol=1e-3)
+    np.testing.assert_allclose(gaps[0.0], 0.0, atol=1e-3)
+    # Same worlds, so the reward difference is the gap term plus the action-rate term.
+    k = env.cfg
+    expected = k.k_cmd_gap * expected_gap**2 + k.k_action_rate * 1.0
+    np.testing.assert_allclose(rewards[0.0] - rewards[1.0], expected, atol=0.02)

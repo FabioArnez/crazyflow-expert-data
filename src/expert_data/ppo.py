@@ -271,6 +271,7 @@ def make_train_iteration(env, network, cfg: Config, tx: optax.GradientTransforma
             "rollout/reward_mean": traj.reward.mean(),
             "rollout/speed": info["speed"].mean(),
             "rollout/speed_error": jnp.abs(info["speed"] - info["target_speed"]).mean(),
+            "rollout/cmd_gap": info["cmd_gap"].mean(),
             "rollout/cmd_speed": jnp.linalg.norm(info["cmd"][..., :3], axis=-1).mean(),
             "rollout/cmd_yaw_rate": jnp.abs(info["cmd"][..., 3]).mean(),
             "rollout/action_saturation": saturated.mean(),

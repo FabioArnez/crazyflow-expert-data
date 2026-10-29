@@ -14,6 +14,11 @@ gates remaining (1) | command reference: p_ref - p (3), v_ref (3), wrap(psi_ref 
 target speed (1)``. The first 37 entries are the RPM expert's observation; the next 7 expose the
 velocity layer's carried reference, which is controller state the policy would otherwise not see.
 
+Command gap. The reward also penalises ``k_cmd_gap * |R_psi v^h - v_ref|^2`` at the end of the
+decision, i.e. the part of the velocity command that the rate-limited reference could not reach.
+The expert therefore commands a feasible velocity trajectory, so the label matches what the drone
+does (spec eq. 3), and the incentive to dither the command around the reference disappears.
+
 Target speed. Every episode draws ``v_target ~ U[target_speed_min, target_speed_max]``; the policy
 observes it and the reward penalises ``k_speed * (|v| - v_target)^2``. This removes the incentive
 to fly at the action bound (the progress reward alone pays for speed) and gives the dataset the
@@ -45,6 +50,7 @@ from expert_data.config import EnvConfig
 from expert_data.geometry import (
     gate_crossing,
     gate_frame,
+    heading_to_world,
     hover_rpm,
     quat_rotate_inv,
     wrap_angle,
@@ -397,7 +403,9 @@ class GateVelocityEnv:
         cfg, n = self.cfg, self.n_envs
         a = jnp.clip(action, -1.0, 1.0)
         cmd = a * self.action_scale
+        yaw0 = yaw_from_quat(state.sim.states.quat[:, 0])  # the command's heading frame
         sim, ref = self._velocity_step(state.sim, state.ref, cmd)
+        cmd_gap = heading_to_world(cmd[:, :3], yaw0) - ref.vel
 
         st = sim.states
         pos, quat, vel, ang_vel = st.pos[:, 0], st.quat[:, 0], st.vel[:, 0], st.ang_vel[:, 0]
@@ -419,6 +427,7 @@ class GateVelocityEnv:
         r_act = -cfg.k_action_rate * jnp.sum((a - state.prev_action) ** 2, axis=-1)
         speed = jnp.linalg.norm(vel, axis=-1)
         r_speed = -cfg.k_speed * (speed - state.target_speed) ** 2
+        r_gap = -cfg.k_cmd_gap * jnp.sum(cmd_gap**2, axis=-1)
 
         cos_tilt = quat_rotate_inv(quat, jnp.broadcast_to(jnp.array([0.0, 0.0, 1.0]), (n, 3)))
         tilted = cos_tilt[:, 2] < jnp.cos(cfg.max_tilt)
@@ -439,6 +448,7 @@ class GateVelocityEnv:
             + r_rate
             + r_act
             + r_speed
+            + r_gap
         )
         t_new = state.t + 1
         truncated = (t_new >= self.max_steps(state.n_active, state.target_speed)) & ~terminated
@@ -464,6 +474,7 @@ class GateVelocityEnv:
             "missed": missed.astype(jnp.float32),
             "speed": speed,
             "target_speed": state.target_speed,
+            "cmd_gap": jnp.linalg.norm(cmd_gap, axis=-1),
             "cmd": cmd,
             "pos": pos,
             "quat": quat,
