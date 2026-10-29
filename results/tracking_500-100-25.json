@@ -1,0 +1,137 @@
+{
+  "grid": [
+    500,
+    100,
+    25
+  ],
+  "command": {
+    "anchor": "integrated",
+    "acc_max_xy": 2.0,
+    "acc_max_z": 1.0,
+    "leash": 0.3,
+    "yaw_leash": 0.3
+  },
+  "hover_5s": {
+    "final_offset_m": 0.032573699951171875,
+    "max_offset_m": 0.03741264343261719
+  },
+  "steps": {
+    "vx": {
+      "rise_time_s": 0.32,
+      "delay_to_50pct_s": 0.32,
+      "steady_state_error": 0.0033397674560546875,
+      "steady_state_error_rel": 0.0033397674560546875,
+      "overshoot_rel": 0.20744478702545166
+    },
+    "vy": {
+      "rise_time_s": 0.32,
+      "delay_to_50pct_s": 0.32,
+      "steady_state_error": 0.003340005874633789,
+      "steady_state_error_rel": 0.003340005874633789,
+      "overshoot_rel": 0.20744562149047852
+    },
+    "vz": {
+      "rise_time_s": 0.32,
+      "delay_to_50pct_s": 0.28,
+      "steady_state_error": 0.0015087127685546875,
+      "steady_state_error_rel": 0.003017425537109375,
+      "overshoot_rel": 0.09539031982421875
+    },
+    "wz": {
+      "rise_time_s": 0.08,
+      "delay_to_50pct_s": 0.04,
+      "steady_state_error": -7.152557373046875e-07,
+      "steady_state_error_rel": -7.152557373046875e-07,
+      "overshoot_rel": 0.3747572898864746
+    }
+  },
+  "consistency": {
+    "gentle": {
+      "std": [
+        0.4,
+        0.4,
+        0.2,
+        0.4
+      ],
+      "cutoff_hz": 0.5,
+      "diverged_worlds": 0,
+      "n_worlds": 16,
+      "r_lag0": {
+        "vx": 0.8579999804496765,
+        "vy": 0.890999972820282,
+        "vz": 0.9449999928474426,
+        "wz": 0.8650000095367432
+      },
+      "best_lag_steps": {
+        "vx": 4,
+        "vy": 4,
+        "vz": 2,
+        "wz": 1
+      },
+      "r_best_lag": {
+        "vx": 0.9660000205039978,
+        "vy": 0.968999981880188,
+        "vz": 0.9710000157356262,
+        "wz": 0.8690000176429749
+      }
+    },
+    "moderate": {
+      "std": [
+        0.6,
+        0.6,
+        0.3,
+        0.6
+      ],
+      "cutoff_hz": 0.5,
+      "diverged_worlds": 0,
+      "n_worlds": 16,
+      "r_lag0": {
+        "vx": 0.7670000195503235,
+        "vy": 0.8180000185966492,
+        "vz": 0.9150000214576721,
+        "wz": 0.8840000033378601
+      },
+      "best_lag_steps": {
+        "vx": 6,
+        "vy": 5,
+        "vz": 3,
+        "wz": 1
+      },
+      "r_best_lag": {
+        "vx": 0.9459999799728394,
+        "vy": 0.9549999833106995,
+        "vz": 0.9639999866485596,
+        "wz": 0.8899999856948853
+      }
+    },
+    "aggressive": {
+      "std": [
+        0.6,
+        0.6,
+        0.3,
+        0.6
+      ],
+      "cutoff_hz": 1.0,
+      "diverged_worlds": 1,
+      "n_worlds": 16,
+      "r_lag0": {
+        "vx": 0.39100000262260437,
+        "vy": 0.49000000953674316,
+        "vz": 0.6150000095367432,
+        "wz": 0.7829999923706055
+      },
+      "best_lag_steps": {
+        "vx": 7,
+        "vy": 7,
+        "vz": 5,
+        "wz": 1
+      },
+      "r_best_lag": {
+        "vx": 0.843999981880188,
+        "vy": 0.8820000290870667,
+        "vz": 0.859000027179718,
+        "wz": 0.8159999847412109
+      }
+    }
+  }
+}
