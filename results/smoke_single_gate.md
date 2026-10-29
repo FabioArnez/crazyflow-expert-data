@@ -48,3 +48,29 @@ speed words in the instructions need. Costs: about 70 % more samples to reach 95
 the fastest target loses 2 % success (11 crashes) while realising 1.05 of 1.2 m/s on these short
 single-gate episodes; at 0.4 m/s the expert flies 0.12 m/s too fast. Confirm on mixed multi-gate
 tracks (5 seeds) before collection.
+
+## Command-gap penalty (2026-10-29, morning)
+
+The target-speed expert dithered its forward command at 15 Hz (`docs/plan.md`, "Command chatter").
+Fix: reward term `−k_cmd_gap |R_ψ v^h − v_ref|²` with `k_cmd_gap = 1` (the part of the command the
+rate-limited reference cannot reach in one decision) and `k_action_rate` 0.01 → 0.1. Record:
+`outputs/single_gate_gap/2026-10-29_09-36-16/`; `results/eval_single_gate_gap.json` and
+`results/label_consistency_single_gate_gap.json`. Deterministic, 512 episodes, tier-1.
+
+| Quantity (vx, vy, vz) | target speed only | + command-gap penalty | Acceptance |
+|---|---|---|---|
+| Consecutive steps that flip sign | 82, 70, 58 % | 3.8, 3.2, 4.0 % | < 30 % |
+| Command power above 5 Hz | 62, 28, 8 % | 2.8, 3.6, 3.5 % | < 5 % |
+| Mean command step per decision | 0.40, 0.11, 0.08 m/s | 0.018, 0.017, 0.010 m/s | — |
+| Rate limit active after the first second | 97, 95, 71 % | 0, 0, 0.4 % | — |
+| eq. (3) r at best lag (lag, decisions) | 0.58 (22), 0.69 (7), 0.87 (9) | 0.981 (4), 0.980 (1), 0.944 (2) | ≥ 0.95 |
+| Reference → realised r (lag) | 0.976 (1), 0.973 (2), 0.954 (1) | 0.989 (2), 0.987 (1), 0.951 (0) | — |
+| Success | 510/512 | 508/512 [98.0, 99.7] | ≥ 95 % |
+| `|a| >= 0.99`, any axis | 0 % | 0 % | < 2 % |
+| Speed vs target, per-episode r | 0.985 | 0.966 | — |
+| First iteration with training success ≥ 95 % | 216 (3.5 M steps) | 484 (7.9 M steps) | — |
+
+The chatter is gone and two of the three criteria pass on every axis. eq. (3) passes for vx, vy
+(and ω_z: 0.959) and misses for vz by 0.006; the controller itself tracks a feasible vz reference
+with r = 0.951, so the remaining vz gap is a property of the z loop, not of the commands. Cost:
+about 2.2× more samples to learn the single gate.

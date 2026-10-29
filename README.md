@@ -93,7 +93,9 @@ Observation (45-D): the RPM expert's 37-D privileged observation (body-frame sta
 current and next gate, gates remaining capped at `obs_remaining_cap`), the 7-D command reference
 (`p_ref − p`, `v_ref`, `ψ_ref − ψ`) and the episode's target speed. Action bounds:
 `±1.5 / ±1.0 / ±0.75` m/s and `±1.5` rad/s. Reward as in the RPM expert (progress, gate bonus, crash
-and miss penalties, rate, action-rate and heading terms) plus `−k_speed (|v| − v_target)²`.
+and miss penalties, rate, action-rate and heading terms) plus `−k_speed (|v| − v_target)²` and
+`−k_cmd_gap |R_ψ v^h − v_ref|²`, which makes the expert command only what the rate-limited reference
+can reach (without it the expert dithered its command at 15 Hz; `results/smoke_single_gate.md`).
 Domain randomisation per world: mass ±10 %, inertia ±10 %, thrust curve ±5 %.
 
 **Target speed.** Each episode draws `v_target ~ U[0.4, 1.2]` m/s (`env.target_speed_min/max`;

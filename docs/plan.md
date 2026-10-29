@@ -49,7 +49,11 @@ batched gate environment, PPO, smoke run).
 2. **Camera** (spec §5 risk 6): AI-deck vs external camera sets `fovy`, resolution and channels;
    needed by steps 4, 5 and 8. The crazyflow FPV camera is `fovy = 70°`, 640×480.
 3. **QC lag criterion** (`docs/crazyflow040_state_control.md` §5): restate "lag ≤ 1 step".
-4. **Command chatter — fix before the 5-seed run.** On the single-gate target-speed expert's own
+4. **Command chatter — fixed on the single gate (2026-10-29).** A command-gap penalty plus a
+   larger action-rate weight removed it (results in `results/smoke_single_gate.md`, last section:
+   sign flips 3.8 / 3.2 / 4.0 %, power above 5 Hz < 4 %, eq. (3) r = 0.981 / 0.980 / 0.944). vz
+   misses r ≥ 0.95 by 0.006, at the limit of the z loop itself (reference → realised r = 0.951).
+   The diagnosis that led to the fix: On the single-gate target-speed expert's own
    rollouts, the eq. (3) check fails (best-lag r = 0.58 / 0.69 / 0.87 for vx, vy, vz). Splitting
    it with `scripts/analyse_label_consistency.py` (tier-1, 512 episodes,
    `results/label_consistency_single_gate_vtarget.json`):
