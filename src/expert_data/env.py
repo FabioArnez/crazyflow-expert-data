@@ -7,12 +7,18 @@ on the 480/120/30 Hz grid), gate events are geometric tests in JAX (spec eq. 13;
 queries), and worlds auto-reset in the same step so the whole rollout can live inside
 ``jax.lax.scan``.
 
-Observation (44-D, privileged; vectors in the drone's body frame so the policy is yaw-invariant):
+Observation (45-D, privileged; vectors in the drone's body frame so the policy is yaw-invariant):
 ``z (1) | gravity dir (3) | vel (3) | ang_vel (3) | rotor_vel normalised (4) | prev action (4) |
 current gate: rel pos (3), normal (3), lateral axis (3) | next gate: same (9) |
-gates remaining (1) | command reference: p_ref - p (3), v_ref (3), wrap(psi_ref - psi) (1)``.
-The first 37 entries are the RPM expert's observation; the last 7 expose the velocity layer's
-carried reference, which is controller state the policy would otherwise not see.
+gates remaining (1) | command reference: p_ref - p (3), v_ref (3), wrap(psi_ref - psi) (1) |
+target speed (1)``. The first 37 entries are the RPM expert's observation; the next 7 expose the
+velocity layer's carried reference, which is controller state the policy would otherwise not see.
+
+Target speed. Every episode draws ``v_target ~ U[target_speed_min, target_speed_max]``; the policy
+observes it and the reward penalises ``k_speed * (|v| - v_target)^2``. This removes the incentive
+to fly at the action bound (the progress reward alone pays for speed) and gives the dataset the
+speed diversity that speed words in the instructions need (spec §3.7). ``info["target_speed"]``
+carries it for the scenario record.
 
 Action: ``a in [-1, 1]^4`` -> ``(v^h_x, v^h_y, v^h_z, omega_z) = a * (v_max_x, v_max_y, v_max_z,
 yaw_rate_max)``. This physical command (``info["cmd"]``) is the demonstration label (Option A):
@@ -20,7 +26,7 @@ it is exactly what the VLA will send through the same interface.
 
 Ported from crazyflow-gate-ppo (``gate_ppo/env.py``): track sampling, gate test, reward, autoreset
 and domain randomisation are unchanged in substance; the action path, the reset of the controller
-state and the per-world parameter batching are new for crazyflow 0.4.0.
+state, the per-world parameter batching and the target speed are new.
 """
 
 from __future__ import annotations
@@ -54,7 +60,7 @@ from expert_data.velocity import (
     reset_drones,
 )
 
-OBS_DIM = 44
+OBS_DIM = 45
 ACTION_DIM = 4
 ROTOR_OBS_SCALE = 0.3  # rotor speed observation = (rpm / hover - 1) / this
 
@@ -72,6 +78,8 @@ class EnvParams:
     circle_prob: Array
     circle_gates_per_turn_min: Array
     circle_gates_per_turn_max: Array
+    target_speed_min: Array
+    target_speed_max: Array
 
     @classmethod
     def from_config(
@@ -83,7 +91,9 @@ class EnvParams:
         domain_randomization: bool = True,
         circle_prob: float | None = None,
         gates_per_turn: float | None = None,
+        target_speed: float | None = None,
     ) -> EnvParams:
+        """Parameters from the config; the keyword arguments fix a value (e.g. for evaluation)."""
         dr = 1.0 if domain_randomization else 0.0
         gpt_min = cfg.circle_gates_per_turn_min if gates_per_turn is None else gates_per_turn
         gpt_max = cfg.circle_gates_per_turn_max if gates_per_turn is None else gates_per_turn
@@ -97,6 +107,12 @@ class EnvParams:
             circle_prob=jnp.float32(cfg.circle_prob if circle_prob is None else circle_prob),
             circle_gates_per_turn_min=jnp.float32(gpt_min),
             circle_gates_per_turn_max=jnp.float32(gpt_max),
+            target_speed_min=jnp.float32(
+                cfg.target_speed_min if target_speed is None else target_speed
+            ),
+            target_speed_max=jnp.float32(
+                cfg.target_speed_max if target_speed is None else target_speed
+            ),
         )
 
 
@@ -112,6 +128,7 @@ class EnvState:
     prev_action: Array  # (N, 4) normalised
     t: Array  # (N,) decisions since reset
     ep_return: Array  # (N,)
+    target_speed: Array  # (N,) m/s, drawn per episode
     rng: Array
 
 
@@ -180,6 +197,7 @@ class GateVelocityEnv:
             prev_action=jnp.zeros((n, ACTION_DIM)),
             t=jnp.zeros((n,), dtype=jnp.int32),
             ep_return=jnp.zeros((n,)),
+            target_speed=jnp.zeros((n,)),
             rng=key,
         )
 
@@ -239,10 +257,13 @@ class GateVelocityEnv:
         self, state: EnvState, mask: Array, key: Array, params: EnvParams
     ) -> EnvState:
         cfg, n = self.cfg, self.n_envs
-        k_track, k_active, k_start, k_dr = jax.random.split(key, 4)
+        k_track, k_active, k_start, k_dr, k_speed = jax.random.split(key, 5)
         gates_pos, gates_yaw, start_pos, start_yaw = self._sample_tracks(k_track, params)
         n_active = jax.random.randint(
             k_active, (n,), params.n_gates_min, params.n_gates_max + 1, dtype=jnp.int32
+        )
+        target_speed = jax.random.uniform(
+            k_speed, (n,), minval=params.target_speed_min, maxval=params.target_speed_max
         )
         pos, quat, vel, ang_vel, _ = sample_start(
             k_start,
@@ -307,6 +328,7 @@ class GateVelocityEnv:
             prev_action=sel(jnp.zeros_like(state.prev_action), state.prev_action),
             t=sel(jnp.zeros_like(state.t), state.t),
             ep_return=sel(jnp.zeros_like(state.ep_return), state.ep_return),
+            target_speed=sel(target_speed, state.target_speed),
         )
 
     # ------------------------------------------------------------------------------ observation
@@ -346,11 +368,18 @@ class GateVelocityEnv:
                 to_body(state.ref.pos - pos),
                 to_body(state.ref.vel),
                 ref_yaw_err,
+                state.target_speed[:, None],
             ],
             axis=-1,
         )
 
     # ------------------------------------------------------------------------------------ step
+    def max_steps(self, n_active: Array, target_speed: Array) -> Array:
+        """Episode budget in decisions; slower target speeds get proportionally more time."""
+        cfg = self.cfg
+        per_gate = cfg.time_slack * cfg.spacing_max / target_speed
+        return (cfg.time_base + n_active * per_gate) * cfg.decision_freq
+
     def command(self, action: Array) -> Array:
         """Physical command ``(N, 4)`` (m/s, m/s, m/s, rad/s) of a normalised action."""
         return jnp.clip(action, -1.0, 1.0) * self.action_scale
@@ -388,6 +417,8 @@ class GateVelocityEnv:
         r_yaw = -cfg.k_yaw * (1.0 - cos_heading)
         r_rate = -cfg.k_ang_vel * jnp.sum(ang_vel**2, axis=-1)
         r_act = -cfg.k_action_rate * jnp.sum((a - state.prev_action) ** 2, axis=-1)
+        speed = jnp.linalg.norm(vel, axis=-1)
+        r_speed = -cfg.k_speed * (speed - state.target_speed) ** 2
 
         cos_tilt = quat_rotate_inv(quat, jnp.broadcast_to(jnp.array([0.0, 0.0, 1.0]), (n, 3)))
         tilted = cos_tilt[:, 2] < jnp.cos(cfg.max_tilt)
@@ -407,10 +438,10 @@ class GateVelocityEnv:
             + r_yaw
             + r_rate
             + r_act
+            + r_speed
         )
         t_new = state.t + 1
-        max_steps = (cfg.time_base + cfg.time_per_gate * state.n_active) * cfg.decision_freq
-        truncated = (t_new >= max_steps) & ~terminated
+        truncated = (t_new >= self.max_steps(state.n_active, state.target_speed)) & ~terminated
         done = terminated | truncated
         ep_return = state.ep_return + reward
 
@@ -431,7 +462,8 @@ class GateVelocityEnv:
             "success": success.astype(jnp.float32),
             "crashed": crashed.astype(jnp.float32),
             "missed": missed.astype(jnp.float32),
-            "speed": jnp.linalg.norm(vel, axis=-1),
+            "speed": speed,
+            "target_speed": state.target_speed,
             "cmd": cmd,
             "pos": pos,
             "quat": quat,

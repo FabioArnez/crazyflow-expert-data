@@ -6,10 +6,10 @@ from expert_data.config import EnvConfig
 from expert_data.env import ACTION_DIM, OBS_DIM, EnvParams, GateVelocityEnv
 
 
-def make_env(n_envs=4, n_gates=3, n_gates_min=2, **kw):
+def make_env(n_envs=4, n_gates=3, n_gates_min=2, target_speed=None, **kw):
     cfg = EnvConfig(n_envs=n_envs, n_gates=n_gates, n_gates_min=n_gates_min, **kw)
     env = GateVelocityEnv(cfg, device="cpu")
-    params = EnvParams.from_config(cfg)
+    params = EnvParams.from_config(cfg, target_speed=target_speed)
     state = env.init_state(jax.random.key(0))
     state, obs = env.reset(state, params)
     return env, params, state, obs
@@ -89,3 +89,28 @@ def test_step_outputs_and_autoreset():
         assert np.all(np.asarray(state.t)[done] == 0)
         assert np.all(np.asarray(state.gate_idx)[done] == 0)
     assert any_done  # 0.75 m/s climb reaches the 3.5 m ceiling within ~4 s
+
+
+def test_target_speed_is_sampled_and_observed():
+    env, params, state, obs = make_env(n_envs=64)
+    v = np.asarray(state.target_speed)
+    assert np.all(v >= env.cfg.target_speed_min) and np.all(v <= env.cfg.target_speed_max)
+    assert v.std() > 0.1  # drawn per world
+    np.testing.assert_allclose(np.asarray(obs[:, -1]), v)
+    _, fixed_params, fixed_state, _ = make_env(target_speed=0.8)
+    np.testing.assert_allclose(np.asarray(fixed_state.target_speed), 0.8)
+    # Slower targets get proportionally more time per gate: 0.4 m/s gets 3x the per-gate budget.
+    base = env.cfg.time_base * env.cfg.decision_freq
+    slow, fast = (float(env.max_steps(jnp.array([1]), jnp.array([v]))[0]) for v in (0.4, 1.2))
+    np.testing.assert_allclose(slow - base, 3.0 * (fast - base), rtol=1e-5)
+
+
+def test_reward_penalises_speed_away_from_target():
+    kw = dict(start_vel_max=0.0, start_ang_vel_max=0.0, start_tilt_max=0.0)
+    rewards = {}
+    for v_target in (0.0, 1.0):
+        env, params, state, obs = make_env(target_speed=v_target, **kw)
+        _, _, reward, *_ = env.step(state, jnp.zeros((4, ACTION_DIM)), params)
+        rewards[v_target] = np.asarray(reward)
+    # Same worlds hovering (|v| ~ 0): the 1 m/s target costs k_speed * 1^2 more per decision.
+    np.testing.assert_allclose(rewards[0.0] - rewards[1.0], env.cfg.k_speed, atol=0.02)

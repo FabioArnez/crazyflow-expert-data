@@ -63,13 +63,19 @@ class EnvConfig:
     z_ceiling: float = 3.5
     max_gate_dist: float = 6.0
     max_tilt: float = 1.2  # rad; beyond this the state controller has lost the drone
-    # --- episode length: max_steps = (time_base + time_per_gate * n_active) * decision_freq ----
+    # --- target speed: one per episode, observed and tracked (speed-conditioned expert) -------
+    # Without it the progress reward pays for speed and the policy pins v^h_x at its bound.
+    # The range stays below v_max_x so that the forward command keeps headroom.
+    target_speed_min: float = 0.4  # m/s
+    target_speed_max: float = 1.2  # m/s
+    # --- episode length: max_steps = (time_base + n_active * time_slack * spacing_max / v_target)
+    #     * decision_freq, so that slow episodes get proportionally more time ------------------
     time_base: float = 2.0  # s
-    time_per_gate: float = 3.0  # s
+    time_slack: float = 1.5
     # The "gates remaining" observation is clipped here so that chains longer than the training
     # tracks stay in-distribution (Phase-1 lesson). Keep it at the largest training n_gates.
     obs_remaining_cap: int = 5
-    # --- reward (Song et al., 2021 style; unchanged from the RPM expert) ------------------------
+    # --- reward (Song et al., 2021 style, as the RPM expert, plus the target-speed term) ---------
     k_progress: float = 1.0  # per metre of progress towards the current gate
     gate_bonus: float = 5.0
     crash_penalty: float = 10.0  # floor / ceiling / frame hit / out of bounds / tilt
@@ -77,6 +83,8 @@ class EnvConfig:
     k_ang_vel: float = 2e-3  # * |omega|^2
     k_action_rate: float = 1e-2  # * |a_t - a_{t-1}|^2 (normalised actions)
     k_yaw: float = 1e-2  # * (1 - cos(heading error to current gate)); keeps the camera on the gate
+    # * (|v| - v_target)^2; with k_progress = 1 the optimum is v_target + 1/(2 k f) ~ +0.03 m/s.
+    k_speed: float = 0.5
     # --- domain randomisation (+- fraction, uniform, per world, resampled at every reset) ------
     dr_mass: float = 0.1
     dr_inertia: float = 0.1
