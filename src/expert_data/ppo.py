@@ -5,8 +5,19 @@ bootstrapping (``V(s_T)`` of the pre-reset observation on timeouts), running Wel
 normalisation carried in the train state, entropy bonus and linear LR annealing against entropy
 collapse.
 
-Ported from crazyflow-gate-ppo (``gate_ppo/ppo.py``) unchanged except for the rollout metrics,
-which now report the velocity command instead of motor RPM.
+Policy distribution (``net.squash``). The default is a tanh-squashed Gaussian: the network gives
+the mean and log-std of a pre-squash sample ``u``, and the action is ``a = tanh(u)``, so commands
+approach the action bounds but never sit on them (the clipped Gaussian of the RPM expert put ~99 %
+of the forward commands exactly on the bound, which is a degenerate label distribution). The
+rollout stores ``u``; the log-density includes the change of variables
+``log p(a) = log N(u; mu, sigma) - sum log(1 - tanh(u)^2)`` (the correction cancels in the PPO
+ratio). The entropy of the squashed distribution has no closed form; the loss uses the
+reparameterised one-sample estimate ``H(u) + E[sum log(1 - tanh(u)^2)]`` (as in Brax), whose second
+term discourages pushing the mean deep into saturation. ``net.squash=false`` restores the clipped
+Gaussian (the env clips to ``[-1, 1]``).
+
+Ported from crazyflow-gate-ppo (``gate_ppo/ppo.py``); new here are the squashed policy and the
+rollout metrics, which report the velocity command and its saturation instead of motor RPM.
 """
 
 from __future__ import annotations
@@ -22,6 +33,10 @@ from jax import Array
 from expert_data.config import Config
 
 LOG_2PI = float(jnp.log(2.0 * jnp.pi))
+LOG_2 = float(jnp.log(2.0))
+# A command component counts as saturated when |a| >= this (normalised units). With the clipped
+# Gaussian it is equivalent to "at the bound"; with tanh, |a| >= 0.99 means |u| >= 2.65.
+SATURATION_THRESHOLD = 0.99
 
 
 @struct.dataclass
@@ -64,7 +79,7 @@ class TrainState:
 @struct.dataclass
 class Transition:
     obs: Array  # raw observation (normalised on the fly with the iteration's stats)
-    action: Array
+    action: Array  # pre-squash Gaussian sample u (tanh) or the unclipped sample (clip)
     log_prob: Array
     value: Array
     reward: Array
@@ -81,6 +96,31 @@ def gaussian_log_prob(x: Array, mean: Array, log_std: Array) -> Array:
 
 def gaussian_entropy(log_std: Array) -> Array:
     return jnp.sum(log_std + 0.5 * (LOG_2PI + 1.0), axis=-1)
+
+
+def tanh_log_det(u: Array) -> Array:
+    """``sum log(1 - tanh(u)^2)`` over the last axis, stable for large ``|u|``."""
+    return jnp.sum(2.0 * (LOG_2 - u - jax.nn.softplus(-2.0 * u)), axis=-1)
+
+
+def policy_action(raw: Array, squash: bool) -> Array:
+    """Normalised action sent to the env from a raw Gaussian sample (or from the mean)."""
+    return jnp.tanh(raw) if squash else jnp.clip(raw, -1.0, 1.0)
+
+
+def policy_log_prob(raw: Array, mean: Array, log_std: Array, squash: bool) -> Array:
+    """Log-density of the action produced by ``raw`` (with the tanh change of variables)."""
+    log_prob = gaussian_log_prob(raw, mean, log_std)
+    return log_prob - tanh_log_det(raw) if squash else log_prob
+
+
+def policy_entropy(key: Array, mean: Array, log_std: Array, squash: bool) -> Array:
+    """Entropy per sample: closed form for the Gaussian, reparameterised estimate for tanh."""
+    entropy = gaussian_entropy(log_std)
+    if not squash:
+        return jnp.broadcast_to(entropy, mean.shape[:-1])
+    u = mean + jnp.exp(log_std) * jax.random.normal(key, mean.shape)
+    return entropy + tanh_log_det(u)
 
 
 def make_optimizer(cfg: Config, n_iterations: int) -> optax.GradientTransformation:
@@ -101,6 +141,7 @@ def make_train_iteration(env, network, cfg: Config, tx: optax.GradientTransforma
         raise ValueError("n_envs * n_steps must be divisible by n_minibatches")
     minibatch_size = batch_size // n_minibatches
     gamma, lam, clip_eps = cfg.ppo.gamma, cfg.ppo.gae_lambda, cfg.ppo.clip_eps
+    squash = cfg.net.squash
 
     def forward(params, stats: RunningStats, raw_obs: Array):
         obs = stats.normalize(raw_obs) if cfg.ppo.normalize_obs else raw_obs
@@ -114,14 +155,14 @@ def make_train_iteration(env, network, cfg: Config, tx: optax.GradientTransforma
             train_state, env_state, last_obs, rng = carry
             rng, key = jax.random.split(rng)
             mean, log_std, value = forward(train_state.params, train_state.obs_stats, last_obs)
-            action = mean + jnp.exp(log_std) * jax.random.normal(key, mean.shape)
-            log_prob = gaussian_log_prob(action, mean, log_std)
+            raw = mean + jnp.exp(log_std) * jax.random.normal(key, mean.shape)
+            log_prob = policy_log_prob(raw, mean, log_std, squash)
             env_state, obs, reward, terminated, truncated, final_obs, info = env.step(
-                env_state, action, env_params
+                env_state, policy_action(raw, squash), env_params
             )
             _, _, value_final = forward(train_state.params, train_state.obs_stats, final_obs)
             transition = Transition(
-                last_obs, action, log_prob, value, reward, terminated, truncated, value_final, info
+                last_obs, raw, log_prob, value, reward, terminated, truncated, value_final, info
             )
             return (train_state, env_state, obs, rng), transition
 
@@ -150,10 +191,10 @@ def make_train_iteration(env, network, cfg: Config, tx: optax.GradientTransforma
         batch = (traj.obs, traj.action, traj.log_prob, traj.value, advantages, targets)
         batch = jax.tree.map(lambda x: x.reshape((batch_size,) + x.shape[2:]), batch)
 
-        def loss_fn(params, stats, mb):
-            obs, action, old_log_prob, old_value, adv, target = mb
+        def loss_fn(params, stats, mb, key):
+            obs, raw, old_log_prob, old_value, adv, target = mb
             mean, log_std, value = forward(params, stats, obs)
-            log_prob = gaussian_log_prob(action, mean, log_std)
+            log_prob = policy_log_prob(raw, mean, log_std, squash)
             log_ratio = log_prob - old_log_prob
             ratio = jnp.exp(log_ratio)
             if cfg.ppo.normalize_adv:
@@ -166,7 +207,7 @@ def make_train_iteration(env, network, cfg: Config, tx: optax.GradientTransforma
             else:
                 v_loss = 0.5 * (value - target) ** 2
             v_loss = v_loss.mean()
-            entropy = gaussian_entropy(log_std).mean()
+            entropy = policy_entropy(key, mean, log_std, squash).mean()
             loss = pg_loss + cfg.ppo.vf_coef * v_loss - cfg.ppo.ent_coef * entropy
             aux = {
                 "loss/total": loss,
@@ -178,9 +219,10 @@ def make_train_iteration(env, network, cfg: Config, tx: optax.GradientTransforma
             }
             return loss, aux
 
-        def update_minibatch(train_state: TrainState, mb):
+        def update_minibatch(train_state: TrainState, mb_key):
+            mb, key = mb_key
             (_, aux), grads = jax.value_and_grad(loss_fn, has_aux=True)(
-                train_state.params, train_state.obs_stats, mb
+                train_state.params, train_state.obs_stats, mb, key
             )
             updates, opt_state = tx.update(grads, train_state.opt_state, train_state.params)
             params = optax.apply_updates(train_state.params, updates)
@@ -189,12 +231,13 @@ def make_train_iteration(env, network, cfg: Config, tx: optax.GradientTransforma
 
         def update_epoch(carry, _):
             train_state, rng = carry
-            rng, key = jax.random.split(rng)
+            rng, key, k_ent = jax.random.split(rng, 3)
             perm = jax.random.permutation(key, batch_size)
             minibatches = jax.tree.map(
                 lambda x: x[perm].reshape((n_minibatches, minibatch_size) + x.shape[1:]), batch
             )
-            train_state, aux = jax.lax.scan(update_minibatch, train_state, minibatches)
+            ent_keys = jax.random.split(k_ent, n_minibatches)
+            train_state, aux = jax.lax.scan(update_minibatch, train_state, (minibatches, ent_keys))
             return (train_state, rng), aux
 
         (train_state, rng), loss_metrics = jax.lax.scan(
@@ -213,6 +256,9 @@ def make_train_iteration(env, network, cfg: Config, tx: optax.GradientTransforma
 
         info = traj.info
         target_var = jnp.var(targets)
+        saturated = (jnp.abs(policy_action(traj.action, squash)) >= SATURATION_THRESHOLD).astype(
+            jnp.float32
+        )
         metrics = {
             "episode/return": done_mean(info["episode_return"]),
             "episode/length": done_mean(info["episode_length"]),
@@ -226,7 +272,11 @@ def make_train_iteration(env, network, cfg: Config, tx: optax.GradientTransforma
             "rollout/speed": info["speed"].mean(),
             "rollout/cmd_speed": jnp.linalg.norm(info["cmd"][..., :3], axis=-1).mean(),
             "rollout/cmd_yaw_rate": jnp.abs(info["cmd"][..., 3]).mean(),
-            "rollout/action_saturation": (jnp.abs(traj.action) >= 1.0).mean(),
+            "rollout/action_saturation": saturated.mean(),
+            **{
+                f"rollout/saturation_a{i}": saturated[..., i].mean()
+                for i in range(saturated.shape[-1])
+            },
             "rollout/crash_per_step": info["crashed"].mean(),
             "policy/log_std": train_state.params["params"]["log_std"].mean(),
             "policy/value_mean": traj.value.mean(),

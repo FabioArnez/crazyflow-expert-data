@@ -86,7 +86,10 @@ class EnvConfig:
 @dataclass
 class NetConfig:
     hidden: list[int] = field(default_factory=lambda: [256, 256])
-    log_std_init: float = -0.5
+    log_std_init: float = -0.5  # of the pre-squash Gaussian when squash is on
+    # Policy distribution: tanh-squashed Gaussian (True) or the RPM expert's clipped Gaussian
+    # (False). Checkpoints without this key (the first smoke run) were trained with False.
+    squash: bool = True
 
 
 @dataclass
