@@ -40,13 +40,15 @@ batched gate environment, PPO, smoke run).
 
 ## Decisions needed before step 7
 
-1. **Action saturation.** The single-gate smoke expert is bang-bang in the horizontal plane: with
-   the deterministic policy, the command sits at the bound in 98.7 % of decisions for `v^h_x`
-   (1.5 m/s) and 55.7 % for `v^h_y`, against 2.5 % for `v^h_z` and 1.2 % for `ω_z` (tier-1, 512
-   episodes). As a label distribution this violates the QC limit (< 2 %) and puts mass on the
-   boundary. Options: tanh-squashed Gaussian policy (the
-   label approaches but never reaches the bound), a cruise-speed term in the reward, or wider
-   bounds with the same acceleration limits. Decide with the 5-seed expert run (step 2).
+1. **Forward-speed saturation.** The policy is now a tanh-squashed Gaussian (`net.squash`), which
+   removed the labels on the bound and the lateral, vertical and yaw saturation of the clipped
+   Gaussian (deterministic `|a| >= 0.99`: vx 98.8 → 36.0 %, vy 56.0 → 0 %, vz 2.5 → 0 %, ω_z
+   1.3 → 0 %; tier-1, single gate, `results/smoke_single_gate.md`). The forward command still
+   crowds its bound (median 0.98 of 1.5 m/s) because the progress reward pays for speed, so the QC
+   limit (< 2 %) still fails for `v^h_x`. Remaining options: a per-episode target speed (in the
+   observation and the reward), which also gives the speed diversity that the spec's "fly slowly /
+   quickly" instructions need (§3.7); or a speed penalty above a cruise speed. A wider `v^h_x` bound
+   alone would move the same problem to a higher speed. Decide with the 5-seed expert run (step 2).
 2. **Camera** (spec §5 risk 6): AI-deck vs external camera sets `fovy`, resolution and channels;
    needed by steps 4, 5 and 8. The crazyflow FPV camera is `fovy = 70°`, 640×480.
 3. **QC lag criterion** (`docs/crazyflow040_state_control.md` §5): restate "lag ≤ 1 step".

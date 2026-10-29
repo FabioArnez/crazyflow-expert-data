@@ -22,7 +22,8 @@ no import across the two repositories; each ported module says what changed in i
 | Velocity-command layer on `Control.state` (`velocity.py`) | done, tested |
 | Batched gate environment with velocity actions (`env.py`) | done, tested |
 | PPO, networks, checkpointing, Hydra training (`ppo.py`, `train.py`) | ported, tested |
-| Single-gate smoke run | learns: 512/512 deterministic successes after 10 M steps, 1.3 min |
+| Tanh-squashed policy (default) | done, tested; removes lateral/vertical/yaw saturation |
+| Single-gate smoke runs (clip, tanh) | learn: 512/512 deterministic successes after 10 M steps, ~1.2 min |
 | Mixed-track expert, 5 seeds, ≥ 95 % | not run yet |
 | Scenarios, world loader, two-pass collection, QC, LeRobot export | planned in `docs/plan.md` |
 
@@ -45,10 +46,13 @@ Zero command holds hover (3.3 cm steady sag from the controller's mass model). T
 criterion "r ≥ 0.95 at a lag of at most one decision" is **not** met in xy: the Mellinger cascade
 lags by ≈ 133 ms on this airframe; `tests/test_velocity.py` keeps it as a strict `xfail`.
 
-**Smoke run** (`experiment=single_gate`, `results/smoke_single_gate.md`): training-rollout success
-≥ 95 % after 2.87 M env steps (36 s); deterministic 512/512 after 10 M steps; ≈ 195 k decisions/s at
-512 worlds on the RTX 2080. The policy saturates the horizontal commands (98.7 % of decisions at the
-`v^h_x` bound) — an open issue for the label distribution.
+**Smoke runs** (`experiment=single_gate`, `results/smoke_single_gate.md`), tanh-squashed policy:
+training-rollout success ≥ 95 % after 2.08 M env steps (30 s); deterministic 512/512 after 10 M
+steps; ≈ 170–190 k decisions/s at 512 worlds on the RTX 2080. Compared with the clipped Gaussian,
+the deterministic saturation (`|a| >= 0.99`) fell from 98.8 / 56.0 / 2.5 / 1.3 % to
+36.0 / 0 / 0 / 0 % (vx, vy, vz, ω_z). The forward command still crowds its bound (median 0.98 of
+1.5 m/s): the progress reward pays for speed. This is open for the label distribution
+(`docs/plan.md`).
 
 ## Install and run
 
@@ -87,7 +91,13 @@ Observation: the RPM expert's 37-D privileged observation (body-frame state, pre
 and next gate, gates remaining capped at `obs_remaining_cap`) plus the 7-D command reference
 (`p_ref − p`, `v_ref`, `ψ_ref − ψ`). Action bounds: `±1.5 / ±1.0 / ±0.75` m/s and `±1.5` rad/s.
 Reward as in the RPM expert (progress, gate bonus, crash and miss penalties, rate, action-rate and
-heading terms). Domain randomisation per world: mass ±10 %, inertia ±10 %, thrust curve ±5 %.
+heading terms).
+
+**Policy** (`ppo.py`). 2×256 tanh actor-critic. The action is `tanh(u)` of a Gaussian sample `u`
+(`net.squash=true`, default): commands approach the bounds without sitting on them. The log-density
+includes the tanh change of variables, and the entropy bonus is the reparameterised estimate
+`H(u) + E[Σ log(1 − tanh²u)]`, which penalises a mean deep in saturation. `net.squash=false` gives
+the RPM expert's clipped Gaussian. Rollouts report `rollout/saturation_a{0..3}` (`|a| >= 0.99`). Domain randomisation per world: mass ±10 %, inertia ±10 %, thrust curve ±5 %.
 
 **Phase-1 lessons kept.** Rotors are pre-spun *exactly* at each world's hover speed at reset; the
 "gates remaining" observation is capped; the default track family is `mixed`.
@@ -101,7 +111,7 @@ src/expert_data/
   env.py        GateVelocityEnv: batched, functional, autoreset
   geometry.py   quaternions, heading frame, gate crossing test       (ported)
   track.py      chain / circle track samplers, start states           (ported)
-  ppo.py        PPO iteration in one jax.jit                         (ported)
+  ppo.py        PPO iteration in one jax.jit, tanh-squashed policy   (ported + new)
   networks.py   2x256 actor-critic                                    (ported)
   checkpoint.py pickle checkpoints + content hash                     (ported)
   config.py     dataclass schema for Hydra
