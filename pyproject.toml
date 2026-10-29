@@ -41,3 +41,4 @@ ignore = ["E731"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = ["ignore:Attaching a spec with an empty prefix:UserWarning"]
