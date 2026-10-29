@@ -1,0 +1,15 @@
+# @package _global_
+# Smoke test of the velocity action space: one gate, chain tracks, no curriculum, small batch so it
+# shares the GPU. It shows that the loop learns; it is not the data-collection expert.
+run:
+  name: single_gate
+env:
+  n_envs: 512
+  n_gates: 1
+  n_gates_min: 1
+  track_type: chain
+  yaw_range: 0.3
+ppo:
+  total_env_steps: 10_000_000
+curriculum:
+  enabled: false

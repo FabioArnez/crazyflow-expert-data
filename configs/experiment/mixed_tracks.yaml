@@ -1,0 +1,16 @@
+# @package _global_
+# Planned Option-A expert stage (not run yet): 3-5 gates on a 50/50 mix of chains and imperfect
+# circles, chain gate normals perturbed by +-0.3 rad (Phase-1 lessons). Train 5 seeds
+# (`-m run.seed=0,1,2,3,4`) and check >= 95 % success before any data collection.
+run:
+  name: mixed_tracks
+env:
+  n_gates: 5
+  n_gates_min: 3
+  track_type: mixed
+  gate_yaw_noise: 0.3
+  circle_prob: 0.5
+  circle_gates_per_turn_min: 5.0
+  circle_gates_per_turn_max: 12.0
+ppo:
+  total_env_steps: 50_000_000

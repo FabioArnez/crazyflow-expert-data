@@ -1,0 +1,37 @@
+# Defaults come from the dataclass schema in src/expert_data/config.py (registered as `base_schema`).
+# Override on the CLI (e.g. `env.n_gates=5 ppo.total_env_steps=50e6`) or pick an experiment file
+# with `experiment=single_gate` (see configs/experiment/).
+defaults:
+  - base_schema
+  - _self_
+  - experiment: null
+
+run:
+  name: velocity_expert
+  seed: 0
+  device: gpu
+  log_interval: 10
+  ckpt_interval: 100
+
+env:
+  n_envs: 1024
+  n_gates: 5
+  n_gates_min: 3
+  track_type: mixed
+
+ppo:
+  n_steps: 32
+  total_env_steps: 30_000_000
+
+curriculum:
+  enabled: true
+  yaw_range_init: 0.2
+
+hydra:
+  run:
+    dir: outputs/${run.name}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: outputs/multirun/${run.name}/${now:%Y-%m-%d_%H-%M-%S}
+    subdir: seed_${run.seed}
+  job:
+    chdir: false
