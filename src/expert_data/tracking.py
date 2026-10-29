@@ -134,6 +134,33 @@ def label_consistency(commanded: np.ndarray, realised: np.ndarray, max_lag: int 
     return table[0], table.argmax(0), table.max(0)
 
 
+def masked_label_consistency(
+    commanded: np.ndarray, realised: np.ndarray, mask: np.ndarray, max_lag: int = 10
+):
+    """:func:`label_consistency` for variable-length episodes, pooled over worlds.
+
+    Args:
+        commanded, realised: ``(T, N, 4)``.
+        mask: ``(T, N)``, True where the decision belongs to the evaluated episode.
+
+    Returns:
+        ``(r0 (4,), best_lag (4,), r_best (4,))``; pairs ``(t, t + lag)`` count only if both are
+        inside the mask.
+    """
+    t_len = commanded.shape[0]
+
+    def corr(lag: int) -> np.ndarray:
+        m = (mask[: t_len - lag] & mask[lag:])[..., None]
+        n = max(int(m.sum()), 1)
+        a, b = commanded[: t_len - lag], realised[lag:]
+        a = np.where(m, a - (a * m).sum((0, 1)) / n, 0.0)
+        b = np.where(m, b - (b * m).sum((0, 1)) / n, 0.0)
+        return (a * b).sum((0, 1)) / (np.sqrt((a * a).sum((0, 1)) * (b * b).sum((0, 1))) + 1e-12)
+
+    table = np.stack([corr(lag) for lag in range(max_lag + 1)])
+    return table[0], table.argmax(0), table.max(0)
+
+
 def smooth_random_commands(
     key: int, t_len: int, n: int, dt: float, scale: np.ndarray, cutoff_hz: float = 1.0
 ) -> np.ndarray:

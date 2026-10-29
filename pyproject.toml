@@ -17,6 +17,7 @@ wandb = ["wandb>=0.17"]
 
 [project.scripts]
 expert-train = "expert_data.train:main"
+expert-eval = "expert_data.evaluate:main"
 
 [dependency-groups]
 dev = [
