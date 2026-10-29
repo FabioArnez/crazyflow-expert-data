@@ -1,0 +1,25 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# Hydra / experiment outputs: run records, checkpoints and videos under outputs/ are tracked;
+# trajectories (*.npz, regenerable with `gate-ppo-eval --save-traj`) and logs are not
+multirun/
+wandb/
+*.log
+
+# Artifacts (checkpoints, trajectories, videos) outside outputs/
+*.pkl
+*.npz
+*.mp4
+!outputs/**/*.pkl
+!outputs/**/*.mp4
+
+# JAX compilation cache
+jax_cache/
